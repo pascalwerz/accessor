@@ -1,9 +1,3 @@
-#if TARGET_MSYS
-#define ACCESSOR_USE_MMAP              0
-#else
-#define ACCESSOR_USE_MMAP              1
-#endif
-
 #include "accessor.h"
 
 #include <stdlib.h>
@@ -343,51 +337,57 @@ accessorStatus accessorOpenReadingFile(accessor_t ** a, const char * basePath, c
     }
 
 #if ACCESSOR_USE_MMAP
-    (*a)->data = mmap(NULL, fileSize, PROT_READ, MAP_FILE | MAP_PRIVATE, file, 0);
-    if ((*a)->data == MAP_FAILED)
+    if (fileSize >= ACCESSOR_MMAP_MIN_FILESIZE)
     {
-        close(file);
-        free(name);
-        accessorClose(a);
-
-        return accessorHostError;
+        (*a)->data = mmap(NULL, fileSize, PROT_READ, MAP_FILE | MAP_PRIVATE, file, 0);
+        if ((*a)->data != MAP_FAILED)
+        {
+            (*a)->isMapped = 1;
+            (*a)->freeOnClose = 0;
+        }
+        else
+        {
+            (*a)->data = NULL;  // MAP_FAILED is (or may be) different from NULL as mmp can be instructed to map a segment at address 0
+        }
     }
-    (*a)->isMapped = 1;
-    (*a)->freeOnClose = 0;
-#else
-    (*a)->data = malloc(fileSize);
+#endif
+    // if the contitional ACCESSOR_USE_MMAP block was compiled: if mmap was ruled out or failed, read the whole file in memory
+    // if the contitional ACCESSOR_USE_MMAP block wasn't compiled: simply read the whole file in memory
     if ((*a)->data == NULL)
     {
-        close(file);
-        free(name);
-        accessorClose(a);
-
-        return accessorHostError;
-    }
-
-    for (size_t offset = 0; offset < fileSize ;)
-    {
-        size_t transferSize;
-        ssize_t bytesTransferred;
-
-
-        transferSize = fileSize - offset;
-        if (transferSize > ACCESSOR_RW_COUNT_LIMIT)
-             transferSize = ACCESSOR_RW_COUNT_LIMIT;   // limit transfer size to a reasonable value
-
-        bytesTransferred = read(file, (*a)->data + offset, transferSize);
-        if (bytesTransferred == -1 || bytesTransferred == 0)
+        (*a)->data = malloc(fileSize);
+        if ((*a)->data == NULL)
         {
             close(file);
             free(name);
             accessorClose(a);
 
-            return accessorHostError;
+            return accessorOutOfMemory;
         }
-        offset += bytesTransferred;
+
+        for (size_t offset = 0; offset < fileSize ;)
+        {
+            size_t transferSize;
+            ssize_t bytesTransferred;
+
+
+            transferSize = fileSize - offset;
+            if (transferSize > ACCESSOR_RW_COUNT_LIMIT)
+                 transferSize = ACCESSOR_RW_COUNT_LIMIT;   // limit transfer size to a reasonable value
+
+            bytesTransferred = read(file, (*a)->data + offset, transferSize);
+            if (bytesTransferred == -1 || bytesTransferred == 0)
+            {
+                close(file);
+                free(name);
+                accessorClose(a);
+
+                return accessorHostError;
+            }
+            offset += (size_t) bytesTransferred;
+        }
+        (*a)->freeOnClose = 1;
     }
-    (*a)->freeOnClose = 1;
-#endif
 
     (*a)->windowOffset = windowOffset;
     (*a)->baseAccessorWindowOffset = windowOffset;

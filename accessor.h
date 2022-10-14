@@ -6,6 +6,11 @@
 // accessor is developed with reverse engineering in mind, so, while care was taken to performance, it is not its main goal.
 // accessor isn't thread-safe, if needed, you have to serialize accessor function calls.
 //
+// **********
+// * how to *
+// **********
+// To use accessor, you only need accessor.h and link with accessor.c or a library containing it
+//
 // accessor implements accessor_t, an opaque variable type hiding internal details that are subject to change and shouldn't be trusted.
 // accessor notions include:
 // - read or write: read accessors only allow read operations, write accessors allow read and write operations. write operations on read accessors return accessorInvalidParameter
@@ -33,11 +38,24 @@ extern "C" {
 
 
 
-#define ACCESSOR_BUILD          100
+#define ACCESSOR_BUILD          101
 // Version history:
 //
 //  Build   Date            Comment
+//  101     14-OCT-2022     small files are always read in memory, not mapped
 //  100     05-OCT-2022     a completely rewritten successor to original accessor toolkit build 25, faster and safer
+
+
+
+#if TARGET_MSYS
+#define ACCESSOR_USE_MMAP               0
+#else
+#define ACCESSOR_USE_MMAP               1
+#endif
+
+#ifndef ACCESSOR_MMAP_MIN_FILESIZE
+#define ACCESSOR_MMAP_MIN_FILESIZE      (16 * 1024)     // even if mmap support is active, files smaller than this are read in memory, not mapped
+#endif
 
 
 
@@ -48,6 +66,12 @@ extern "C" {
 #include <stddef.h>         // for nullptr
 
 
+// accessor_t is an opaque structure
+// accessor variables are of type "accessor_t *" and their initial value has to be set to ACCESSOR_INIT
+typedef struct _accessor_t accessor_t;
+
+
+
 // accessor_t variables MUST be initialized to ACCESSOR_INIT, else accessorOpen... functions will fail
 #ifdef __cplusplus
 #define ACCESSOR_INIT       nullptr
@@ -55,14 +79,10 @@ extern "C" {
 #define ACCESSOR_INIT       NULL
 #endif
 
+
+
 // windowSize and countLimit special value meaning "up to end of data"
 #define ACCESSOR_UNTIL_END  SIZE_MAX
-
-
-// accessor_t is an opaque structure
-// accessor variables are of type "accessor_t *" and their initial value has to be set to ACCESSOR_INIT
-typedef struct _accessor_t accessor_t;
-
 
 
 // endianness passed as parameter must be one of accessorBig, Little, Native or Reverse
@@ -72,7 +92,7 @@ typedef enum
     accessorLittle,                                 // well known
     accessorNative,                                 // the native byte order of running program, be it big or little
     accessorReverse,                                // the opposite of accessorNative
-#define ACCESSOR_ENDIANNESS_COUNT   4
+#define ACCESSOR_ENDIANNESS_COUNT       4
 } accessorEndianness;
 
 
@@ -134,7 +154,7 @@ typedef enum
 
 
 
-// only read operations may generate coverage record. write operations don't
+// only read operations may generate coverage record, write operations don't
 typedef struct
 {
     size_t offset;                                  // default sort keys order is increasing offset, decreasing size, increasing usage1, increasing usage2
@@ -602,7 +622,7 @@ uint64_t accessorSwapUInt64(uint64_t x);                                        
 // basePath can be NULL or "", NULL is a synonym for ""
 // path can't be NULL nor empty
 // no canonicalization is done and path components existence is not checked, except that:
-// - if basePath does not end with '/' (or '\' if applicable) and basePath exists AND is not a directory, path is relative to basePath's parent directory
+// - if basePath does not end with '/' (or '\' if applicable) and basePath exists AND is not a directory, path is relative to basePath's *parent* directory
 // file will not be created but accessorPathOptionCreateDirectory and accessorPathOptionCreatePath are honored
 accessorStatus accessorBuildPath(char ** result, const char * basePath, const char * path, accessorPathOptions pathOptions, size_t additionalAllocationLength);
 

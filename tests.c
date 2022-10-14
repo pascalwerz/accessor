@@ -1483,6 +1483,7 @@ void testOpen(void)
     char * fullFilePath;
     uint32_t writtenData[16];
     uint32_t readData[16];
+    uint8_t u8;
     const void * ptr;
     size_t count;
 
@@ -1493,6 +1494,31 @@ void testOpen(void)
     mktemp(dirPath);
     mktemp(subDirPath);
     CHECK_EQ(accessorBuildPath(&fullDirPath, dirPath, subDirPath, accessorPathOptionNone | accessorPathOptionConvertBackslash | accessorPathOptionCreatePath, 0), accessorOk);
+
+    CHECK_EQ(accessorOpenWritingFile(&a, fullDirPath, filename, accessorPathOptionNone | accessorPathOptionCreatePath, 0666, 0, 0), accessorOk);
+    CHECK_EQ(accessorWriteRepeatedByte(a, 0xaa, ACCESSOR_MMAP_MIN_FILESIZE - 100), accessorOk);
+    CHECK_EQ(accessorWriteUInt8(a, 0x55), accessorOk);
+    CHECK_EQ(accessorClose(&a), accessorOk);
+    CHECK_EQ(accessorOpenReadingFile(&a, fullDirPath, filename, accessorPathOptionNone, 0, ACCESSOR_UNTIL_END), accessorOk);
+    CHECK_EQ(accessorSeek(a, -2, SEEK_END), accessorOk);
+    CHECK_EQ(accessorReadUInt8(a, &u8), accessorOk);
+    CHECK_EQ(u8, 0xaa);
+    CHECK_EQ(accessorReadUInt8(a, &u8), accessorOk);
+    CHECK_EQ(u8, 0x55);
+    CHECK_EQ(accessorClose(&a), accessorOk);
+
+    CHECK_EQ(accessorOpenWritingFile(&a, fullDirPath, filename, accessorPathOptionNone | accessorPathOptionCreatePath, 0666, 0, 0), accessorOk);
+    CHECK_EQ(accessorWriteRepeatedByte(a, 0xaa, ACCESSOR_MMAP_MIN_FILESIZE + 100), accessorOk);
+    CHECK_EQ(accessorWriteUInt8(a, 0x55), accessorOk);
+    CHECK_EQ(accessorClose(&a), accessorOk);
+    CHECK_EQ(accessorOpenReadingFile(&a, fullDirPath, filename, accessorPathOptionNone, 0, ACCESSOR_UNTIL_END), accessorOk);
+    CHECK_EQ(accessorSeek(a, -2, SEEK_END), accessorOk);
+    CHECK_EQ(accessorReadUInt8(a, &u8), accessorOk);
+    CHECK_EQ(u8, 0xaa);
+    CHECK_EQ(accessorReadUInt8(a, &u8), accessorOk);
+    CHECK_EQ(u8, 0x55);
+    CHECK_EQ(accessorClose(&a), accessorOk);
+
     CHECK_EQ(accessorOpenWritingFile(&a, fullDirPath, filename, accessorPathOptionNone | accessorPathOptionCreatePath, 0666, 0, 0), accessorOk);
     CHECK_EQ(accessorWriteBytes(a, writtenData, sizeof(writtenData)), accessorOk);
     CHECK_EQ(accessorClose(&a), accessorOk);

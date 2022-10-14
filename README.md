@@ -17,4 +17,4 @@ Your feedback is welcome.
 
 xvi;
 
-​	*PS:* *accessor* is primarely developed on **macOS**, but should easily be portable to any standard-compliant platform.
+​	PS: *accessor* is primarely developed on **macOS**, but should easily be portable to any standard-compliant platform.

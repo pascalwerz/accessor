@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		501B148528D9E8EB00569F8F /* tests.c in Sources */ = {isa = PBXBuildFile; fileRef = 501B148428D9E8E800569F8F /* tests.c */; };
 		501B148628D9E8EE00569F8F /* accessor.c in Sources */ = {isa = PBXBuildFile; fileRef = 501B148328D9E8E400569F8F /* accessor.c */; };
-		50D2E07728EED0CA004ABC16 /* Makefile in Sources */ = {isa = PBXBuildFile; fileRef = 50D41E2D28EEBBA40035D000 /* Makefile */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -121,7 +120,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				50D2E07728EED0CA004ABC16 /* Makefile in Sources */,
 				501B148628D9E8EE00569F8F /* accessor.c in Sources */,
 				501B148528D9E8EB00569F8F /* tests.c in Sources */,
 			);
