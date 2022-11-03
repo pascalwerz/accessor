@@ -38,10 +38,11 @@ extern "C" {
 
 
 
-#define ACCESSOR_BUILD          101
+#define ACCESSOR_BUILD          102
 // Version history:
 //
 //  Build   Date            Comment
+//  102     03-NOV-2022     stop using mktemp
 //  101     14-OCT-2022     small files are always read in memory, not mapped
 //  100     05-OCT-2022     a completely rewritten successor to original accessor toolkit build 25, faster and safer
 

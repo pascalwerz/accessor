@@ -15,7 +15,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include <unistd.h>		// for mktemp etc.
+#include <unistd.h>		// for mkdtemp etc.
 #include <libgen.h>     // for basename
 
 
@@ -1476,7 +1476,7 @@ void testOpen(void)
 {
     accessor_t * a = ACCESSOR_INIT;
     accessor_t * b = ACCESSOR_INIT;
-    char dirPath[256] = "\\\\tmp\\accessorTest.XXXXXXXX";
+    char dirPath[256] = "//tmp/accessorTest.XXXXXXXX";
     char subDirPath[256] = "XXXXXXXX";
     char * filename = "test.bin";
     char * fullDirPath;
@@ -1491,8 +1491,8 @@ void testOpen(void)
     for (size_t i = 0; i < sizeof(writtenData) / sizeof(*writtenData); i++)
         writtenData[i] = (uint32_t) random();
 
-    mktemp(dirPath);
-    mktemp(subDirPath);
+    mkdtemp(dirPath);
+    mkdtemp(subDirPath);
     CHECK_EQ(accessorBuildPath(&fullDirPath, dirPath, subDirPath, accessorPathOptionNone | accessorPathOptionConvertBackslash | accessorPathOptionCreatePath, 0), accessorOk);
 
     CHECK_EQ(accessorOpenWritingFile(&a, fullDirPath, filename, accessorPathOptionNone | accessorPathOptionCreatePath, 0666, 0, 0), accessorOk);
