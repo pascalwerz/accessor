@@ -1503,8 +1503,9 @@ void testOpen(void)
     CHECK_EQ(accessorClose(&a), accessorOk);
     CHECK_EQ(a, ACCESSOR_INIT);
 
+#if ACCESSOR_MMAP_MIN_FILESIZE > 100
     CHECK_EQ(accessorOpenWritingFile(&a, fullDirPath, filename, accessorPathOptionNone | accessorPathOptionCreatePath, 0666, 0, 0), accessorOk);
-    CHECK_EQ(accessorWriteRepeatedByte(a, 0xaa, ACCESSOR_MMAP_MIN_FILESIZE - 100), accessorOk);
+    CHECK_EQ(accessorWriteRepeatedByte(a, 0xaa, (size_t) ACCESSOR_MMAP_MIN_FILESIZE - 100), accessorOk);
     CHECK_EQ(accessorWriteUInt8(a, 0x55), accessorOk);
     CHECK_EQ(accessorClose(&a), accessorOk);
     CHECK_EQ(accessorOpenReadingFile(&a, fullDirPath, filename, accessorPathOptionNone, 0, ACCESSOR_UNTIL_END), accessorOk);
@@ -1515,6 +1516,7 @@ void testOpen(void)
     CHECK_EQ(u8, 0x55);
     CHECK_EQ(accessorClose(&a), accessorOk);
     CHECK_EQ(a, ACCESSOR_INIT);
+#endif
 
     CHECK_EQ(accessorOpenWritingFile(&a, fullDirPath, filename, accessorPathOptionNone | accessorPathOptionCreatePath, 0666, 0, 0), accessorOk);
     CHECK_EQ(accessorWriteRepeatedByte(a, 0xaa, ACCESSOR_MMAP_MIN_FILESIZE + 100), accessorOk);
@@ -1538,6 +1540,10 @@ void testOpen(void)
     count = accessorLookAheadAvailableBytes(a, &ptr);
     CHECK_EQ(count, sizeof(writtenData) - sizeof(uint32_t));
     CHECK_EQ(memcmp(ptr, writtenData + 1, count), 0);
+    CHECK_EQ(accessorOpenReadingAccessorWindow(&b, a, 1, ACCESSOR_UNTIL_END), accessorOk);
+    CHECK_EQ(accessorRootWindowOffset(a), sizeof(uint32_t));
+    CHECK_EQ(accessorRootWindowOffset(b), sizeof(uint32_t) + 1);
+    CHECK_EQ(accessorClose(&b), accessorOk);
     CHECK_EQ(accessorClose(&a), accessorOk);
 
     CHECK_EQ(accessorBuildPath(&fullFilePath, fullDirPath, filename, accessorPathOptionNone | accessorPathOptionConvertBackslash, 0), accessorOk);

@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>       // fstat
-#include <unistd.h>         // write
+#include <unistd.h>         // write, getpagesize
 #include <fcntl.h>          // open
 #include <errno.h>          // errno_t
 #include <limits.h>         // CHAR_BIT
@@ -39,6 +39,7 @@ typedef struct _accessor_t
     // for base accessor_t only
     uint8_t * data;                     // for readonly accessors, can't be moved/reallocated
     size_t dataMaxSize;                 // allocated or mapped memory segment size
+    size_t dataFileOffset;              // offset of allocated or mapped memory in readonly file
     size_t granularity;
     char isMapped;
     char mayBeReallocated;
@@ -220,6 +221,7 @@ static accessorStatus accessorPrivateCreateEmpty(accessor_t ** a)
 
     result->data = NULL;
     result->dataMaxSize = 0;
+    result->dataFileOffset = 0;
     result->granularity = ACCESSOR_SELECT_32_64(4 * 1024, 64 * 1024);
     result->isMapped = 0;
     result->mayBeReallocated = 0;
@@ -267,7 +269,7 @@ accessorStatus accessorOpenReadingMemory(accessor_t ** a, const void * ptr, size
     if (windowOffset + windowSize > dataSize)
         return accessorBeyondEnd;
 
-    (*a)->data = (uint8_t *) ptr;           // intentionnally discarding const qualifier: accessor is read only
+    (*a)->data = (uint8_t *) ptr;           // intentionally discarding const qualifier: accessor is read only
     (*a)->windowOffset = windowOffset;
     (*a)->baseAccessorWindowOffset = windowOffset;
     (*a)->windowSize = windowSize;
@@ -337,26 +339,33 @@ accessorStatus accessorOpenReadingFile(accessor_t ** a, const char * basePath, c
     }
 
 #if ACCESSOR_USE_MMAP
-    if (fileSize >= ACCESSOR_MMAP_MIN_FILESIZE)
+    if (windowSize && windowSize >= ACCESSOR_MMAP_MIN_FILESIZE)
     {
-        (*a)->data = mmap(NULL, fileSize, PROT_READ, MAP_FILE | MAP_PRIVATE, file, 0);
+        size_t pageSize = (size_t) getpagesize();
+        size_t fileMapOffset = windowOffset - (windowOffset % pageSize);
+        size_t fileMapSize = windowSize + (windowOffset % pageSize);
+
+        (*a)->data = mmap(NULL, fileMapSize, PROT_READ, MAP_FILE | MAP_PRIVATE, file, (off_t) fileMapOffset);
         if ((*a)->data != MAP_FAILED)
         {
             (*a)->isMapped = 1;
             (*a)->freeOnClose = 0;
+            (*a)->dataFileOffset = fileMapOffset;
+            (*a)->windowOffset = windowOffset % pageSize;
+            (*a)->baseAccessorWindowOffset = (*a)->windowOffset;
         }
         else
         {
-            (*a)->data = NULL;  // MAP_FAILED is (or may be) different from NULL as mmp can be instructed to map a segment at address 0
+            (*a)->data = NULL;  // MAP_FAILED is (or may be) different from NULL as mmap can be instructed to map a segment at address 0
         }
     }
 #endif
-    // if the contitional ACCESSOR_USE_MMAP block was compiled: if mmap was ruled out or failed, read the whole file in memory
-    // if the contitional ACCESSOR_USE_MMAP block wasn't compiled: simply read the whole file in memory
+    // if the contitional ACCESSOR_USE_MMAP block was compiled: if mmap was ruled out or failed, read the file data in memory
+    // if the contitional ACCESSOR_USE_MMAP block wasn't compiled: simply read the file data in memory
     if ((*a)->data == NULL)
     {
-        (*a)->data = malloc(fileSize);
-        if ((*a)->data == NULL)
+        (*a)->data = malloc(windowSize > 0 ? windowSize : 1);   // ensure at least 1 byte is allocated
+        if ((*a)->data == NULL || lseek(file, (off_t) windowOffset, SEEK_SET) == -1)
         {
             close(file);
             free(name);
@@ -365,13 +374,13 @@ accessorStatus accessorOpenReadingFile(accessor_t ** a, const char * basePath, c
             return accessorOutOfMemory;
         }
 
-        for (size_t offset = 0; offset < fileSize ;)
+        for (size_t offset = 0; offset < windowSize ;)
         {
             size_t transferSize;
             ssize_t bytesTransferred;
 
 
-            transferSize = fileSize - offset;
+            transferSize = windowSize - offset;
             if (transferSize > ACCESSOR_RW_COUNT_LIMIT)
                  transferSize = ACCESSOR_RW_COUNT_LIMIT;   // limit transfer size to a reasonable value
 
@@ -386,11 +395,12 @@ accessorStatus accessorOpenReadingFile(accessor_t ** a, const char * basePath, c
             }
             offset += (size_t) bytesTransferred;
         }
+        (*a)->dataFileOffset = windowOffset;
+        (*a)->windowOffset = 0;
+        (*a)->baseAccessorWindowOffset = 0;
         (*a)->freeOnClose = 1;
     }
 
-    (*a)->windowOffset = windowOffset;
-    (*a)->baseAccessorWindowOffset = windowOffset;
     (*a)->windowSize = windowSize;
     (*a)->cursor = 0;
     (*a)->availableBytes = windowSize;
@@ -664,7 +674,7 @@ accessorStatus accessorClose(accessor_t ** a)
 #if ACCESSOR_USE_MMAP
         if ((*a)->isMapped)
         {
-            (void) munmap((*a)->data, (*a)->dataMaxSize);    // errors intentionnally ignored
+            (void) munmap((*a)->data, (*a)->dataMaxSize);    // errors intentionally ignored
         }
 #endif
 
@@ -730,7 +740,7 @@ size_t accessorCursor(const accessor_t * a)
 
 size_t accessorRootWindowOffset(const accessor_t * a)
 {
-    return a->baseAccessorWindowOffset;
+    return a->baseAccessorWindowOffset + a->baseAccessor->dataFileOffset;
 }
 
 

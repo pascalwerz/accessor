@@ -42,20 +42,22 @@ extern "C" {
 // Version history:
 //
 //  Build   Date            Comment
-//  102     03-NOV-2022     stop using mktemp
+//  102     03-NOV-2022     stop using mktemp. when reading or mapping a file, only the window (possibly rounded to page boundary) is read or mapped
 //  101     14-OCT-2022     small files are always read in memory, not mapped
 //  100     05-OCT-2022     a completely rewritten successor to original accessor toolkit build 25, faster and safer
 
 
 
+// if ACCESSOR_USE_MMAP is true, accessor will try mapping data in memory instead of reading it.
 #if TARGET_MSYS
 #define ACCESSOR_USE_MMAP               0
 #else
 #define ACCESSOR_USE_MMAP               1
 #endif
 
+// accessing a file window smaller than ACCESSOR_MMAP_MIN_FILESIZE will avoid mapping it.
 #ifndef ACCESSOR_MMAP_MIN_FILESIZE
-#define ACCESSOR_MMAP_MIN_FILESIZE      (16 * 1024)     // even if mmap support is active, files smaller than this are read in memory, not mapped
+#define ACCESSOR_MMAP_MIN_FILESIZE      (16 * 1024)
 #endif
 
 
@@ -249,7 +251,7 @@ accessorStatus accessorClose(accessor_t ** a);
 
 // get accessor window's offset in the root accessor's data
 // the root accessor is the top of super accessors chain or itself if it has no superaccessor
-// returned value include root accessor own window offset into data, if applicable
+// returned value include root accessor's own window offset into data, if applicable
 size_t accessorRootWindowOffset(const accessor_t * a);
 
 // get current accessor window size
