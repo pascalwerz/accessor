@@ -1297,7 +1297,7 @@ void accessorAllowCoverage(accessor_t * a, accessorCoverageOption option)
 
 void accessorSuspendCoverage(accessor_t * a)
 {
-    if (a->coverageSuspendCount < UINT_MAX)
+    if (a->coverageSuspendCount < UINTMAX_MAX)
         a->coverageSuspendCount++;
 }
 
