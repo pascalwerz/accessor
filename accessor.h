@@ -2,23 +2,25 @@
 // * accessor *
 // ************
 //
-// With accessor, you can get read and write access to files or memory without worrying about data size, endianness and details.
-// accessor is developed with reverse engineering in mind, so, while care was taken to performance, it is not its main goal.
+// With accessor, you can read and write files or memory without worrying about data size, endianness and details.
+// While care was taken to performance, accessor is developed with reverse engineering in mind.
 // accessor isn't thread-safe, if needed, you have to serialize accessor function calls.
 //
 // **********
 // * how to *
 // **********
-// To use accessor, you only need accessor.h and link with accessor.c or a library containing it
+//
+// To use accessor, you only need to include accessor.h and link with accessor.c or a library containing it
 //
 // accessor implements accessor_t, an opaque variable type hiding internal details that are subject to change and shouldn't be trusted.
 // accessor notions include:
-// - read or write: read accessors only allow read operations, write accessors allow read and write operations. write operations on read accessors return accessorInvalidParameter
+// - read or write: read accessors only allow read operations, write accessors allow read and write operations. write operations on read accessors return accessorInvalidParameter.
 // - endianness: big or little are as usual. native and reverse are also defined and depend on the architecture of the running program.
 // - cursor: read and write operations occur at the cursor which then advance from the transfer's byte count.
-// - window: defined by an offset and a size, a window delimits the accessible part of some (possibly larger) data chunk.
+// - window: defined by an offset and a size, a window delimits the accessible part of some (possibly larger) file or memory data chunk.
 // - coverage: read accessors may be instructed to record which part of the data was read. Coverage can then be consolidated, e.g. to find which part of data isn't explored yet.
-// - sub-accessors: a readonly accessor (the sub-accessor) may be created to access part of another readonly accessor (the super-accessor). This is done without duplicating data. write accessors can't be sub-accessed
+// - sub-accessors: a readonly accessor (the sub-accessor) may be created to access part of another readonly accessor (the super-accessor). This is done without duplicating data.
+// - write accessors can't be sub-accessed
 // - both a "basePath" and a "path" are used to specify a file path:
 //   - if "path" is an absolute path, "basePath" is ignored
 //   - if "path" is a relative path and "basePath" refers to a non existing object, then "basePath" is considered as a directory path and "path" is the relative to the "basePath" directory
@@ -50,9 +52,9 @@ extern "C" {
 
 
 #define KB  1024
-#define MB  (KB*KB)
-#define GB  (KB*KB*KB)
-#define TB  (KB*KB*KB*KB)
+#define MB  (1024*KB)
+#define GB  (1024*MB)
+#define TB  (1024*GB)
 
 
 
@@ -63,7 +65,7 @@ extern "C" {
 #define ACCESSOR_USE_MMAP               1
 #endif
 
-// read accessing a file's window smaller than ACCESSOR_MMAP_MIN_FILESIZE will avoid mapping it.
+// file read accessors with a window smaller than ACCESSOR_MMAP_MIN_FILESIZE will not be mapped but read in memory.
 #ifndef ACCESSOR_MMAP_MIN_FILESIZE
 #define ACCESSOR_MMAP_MIN_FILESIZE      (16 * KB)
 #endif
@@ -96,7 +98,7 @@ typedef struct _accessor_t accessor_t;
 #define ACCESSOR_UNTIL_END  SIZE_MAX
 
 
-// endianness passed as parameter must be one of accessorBig, Little, Native or Reverse
+// endianness passed as parameter must be one of the following
 typedef enum
 {
     accessorBig                         = 0,        // well known
@@ -111,7 +113,7 @@ typedef enum
 // various status used to indicate most probable cause of failure
 typedef enum
 {
-    accessorOk                          = 0,
+    accessorOk                          = 0,        // success
     accessorInvalidParameter,                       // invalid parameter or invalid request
     accessorBeyondEnd,                              // accessing data beyond end of allowed window or beyond some other size limit
     accessorOutOfMemory,                            // memory allocation failed
@@ -128,8 +130,8 @@ typedef enum
 enum
 {
     accessorPathOptionNone              = 0x00,
-    accessorPathOptionCreateDirectory   = 0x01,     // directory containing object referred by path will be created if needed. created directory are all created using mode 0777 (ugo=rwx)
-    accessorPathOptionCreatePath        = 0x02,     // directory and intermediate directories containing object referred by path will be created if needed, using mode 0777 (ugo=rwx). implies accessorPathOptionCreateDirectory
+    accessorPathOptionCreateDirectory   = 0x01,     // directory containing object referred by path will be created if needed. created directory are all created using mode 0777 (ugo=rwx), limited by umask.
+    accessorPathOptionCreatePath        = 0x02,     // directory and intermediate directories containing object referred by path will be created if needed, using mode 0777 (ugo=rwx), limited by umask. implies accessorPathOptionCreateDirectory
     accessorPathOptionConvertBackslash  = 0x04,     // backslash ("\") will be converted to slash ("/"). Useful for some ugly foreign path syntax.
     accessorPathOptionPathIsRelative    = 0x08,     // if path is an absolute path, it will be converted to a relative one by removing leading "\" or "/"
     accessorPathOptionIs32Bits          = INT32_MAX // don't use, this is to force enum to 32 bits integers
@@ -190,8 +192,9 @@ typedef enum
 
 // all read accessors are created with coverage disabled, once open, accessor's coverage can be enabled with accessorAllowCoverage()
 // windowOffset and windowSize define the window, i.e. the part of the underlying (memory or file) data accessible by the accessor
-// e.g. cursor == 0 will access data at start of window, cursor == windowSize - 1 will point at last window byte
-// sub accessor's windows are window on super accessor's window, not on super accessor's complete data
+// windowSize == ACCESSOR_UNTIL_END means "up to end of data", other windowSize values are taken literally
+// cursor == 0 will access data at start of window, cursor == windowSize - 1 will point at last window byte
+// sub-accessor's windows are windows on super-accessor's window, not on super-accessor's complete data
 
 // ptr              memory chunk address
 // dataSize         memory chunk size
@@ -208,20 +211,20 @@ accessorStatus accessorOpenReadingMemory(accessor_t ** a, const void * ptr, size
 // initial endianness is accessorDefaultEndianness()
 accessorStatus accessorOpenReadingFile(accessor_t ** a, const char * basePath, const char * path, accessorPathOptions pathOptions, size_t windowOffset, size_t windowSize);
 
-// create a readonly sub accessor whose data is read from a readonly super accessor's own window.
-// count == ACCESSOR_UNTIL_END means up to end of super accessor's data, other values are taken literally
-// coverage for a sub accessor future operations is handled by sub accessor only, super accessor's coverage is not affected by operations on sub accessor.
-// a single coverage record is added for super accessor, if enabled and not suspended
-// sub accessor inherits super accessor's endianness
+// create a readonly sub-accessor whose data is read from a readonly super-accessor's own window.
+// count == ACCESSOR_UNTIL_END means up to end of super-accessor's data, other values are taken literally
+// coverage for a sub-accessor future operations is handled by sub-accessor only, super-accessor's coverage is not affected by operations on sub-accessor.
+// a single coverage record is added for super-accessor, if enabled and not suspended
+// sub-accessor inherits super-accessor's endianness
 accessorStatus accessorOpenReadingAccessorBytes(accessor_t ** a, accessor_t  *supera, size_t count);
 
-// create a readonly sub accessor accessing a sub-window of a readonly super accessor's own window.
+// create a readonly sub-accessor accessing a sub-window of a readonly super-accessor's own window.
 // current cursor of supera is irrelevant
-// windowSize == ACCESSOR_UNTIL_END means up to end of super accessor's data, other values are taken literally
-// coverage for a sub accessor future operations is handled by sub accessor only, super accessor's coverage is not affected by operations on sub accessor.
-// no coverage record is added for super accessor
-// sub accessor inherits super accessor's endianness
-// internal super accessor reference count is incremented but is otherwise unmodified
+// windowSize == ACCESSOR_UNTIL_END means up to end of super-accessor's data, other values are taken literally
+// coverage for a sub-accessor future operations is handled by sub-accessor only, super-accessor's coverage is not affected by operations on sub-accessor.
+// no coverage record is added for super-accessor
+// sub-accessor inherits super-accessor's endianness
+// internal super-accessor reference count is incremented but is otherwise unmodified
 accessorStatus accessorOpenReadingAccessorWindow(accessor_t ** a, accessor_t * supera, size_t windowOffset, size_t windowSize);
 
 // write accessors
@@ -248,8 +251,8 @@ accessorStatus accessorOpenWritingFile(accessor_t ** a, const char * basePath, c
 // windowSize == ACCESSOR_UNTIL_END means up to end of accessor's own window, other windowSize values are taken literally
 accessorStatus accessorWriteToFile(const accessor_t * a, const char * basePath, const char * path, accessorPathOptions pathOptions, mode_t mode, size_t windowOffset, size_t windowSize);
 
-// accessor is closed. if a is super accessor to another accessor, it close actions may be delayed until all sub accessors are closed
-// "a" will be set to ACCESSOR_INIT on success whether it is a super accessor or not
+// accessor is closed. if a is super-accessor to another accessor, it close actions may be delayed until all sub-accessors are closed
+// on success, "a" will be set to ACCESSOR_INIT whether it is a super-accessor or not
 accessorStatus accessorClose(accessor_t ** a);
 
 
@@ -258,7 +261,7 @@ accessorStatus accessorClose(accessor_t ** a);
 // cursor and size related
 
 // get accessor window's offset in the root accessor's data
-// the root accessor is the top of super accessors chain or itself if it has no superaccessor
+// the root accessor is the top of super-accessors chain or itself if it has no superaccessor
 // returned value include root accessor's own window offset into data, if applicable
 size_t accessorRootWindowOffset(const accessor_t * a);
 
@@ -266,12 +269,12 @@ size_t accessorRootWindowOffset(const accessor_t * a);
 // for write accessor, the window size may have been extended to contain the last written byte
 size_t accessorSize(const accessor_t * a);
 
-// for write accessors only: truncate at current position, data following cursor is dismissed
+// for write accessors only: truncate at current position, any data following cursor is removed from the accessor
 accessorStatus accessorTruncate(accessor_t * a);
 
 // change cursor position
 // write accessor cursor can be moved beyong its window, in which case the window size is extended and added bytes are set to 0x00
-// whence                 is one of SEEK_SET, SEEK_CUR or SEEK_END, similar to lseek(2)
+// whence                 one of SEEK_SET, SEEK_CUR or SEEK_END, similar to lseek(2)
 accessorStatus accessorSeek(accessor_t * a, ssize_t offset, int whence);
 
 // get how much bytes are available from cursor until accessor's end of window
@@ -286,20 +289,20 @@ accessorStatus accessorPushCursor(accessor_t * a);
 // restore last pushed cursor, removing it from the cursor stack
 accessorStatus accessorPopCursor(accessor_t * a);
 
-// similar to repeating accessorDropCursor() n-1 times followed by a single accessorPopCursor()
+// equivalent to repeating accessorPopCursor() n times
 accessorStatus accessorPopCursors(accessor_t * a, size_t n);
 
 // remove last pushed cursor from the cursor stack, cursor is not modified
 accessorStatus accessorDropCursor(accessor_t * a);
 
-// similar to repeating accessorDropCursor() n times
+// equivalent to repeating accessorDropCursor() n times
 accessorStatus accessorDropCursors(accessor_t * a, size_t n);
 
 
 
 // andianness related
 
-// get native endianness as either endianness_big or accessorLittle
+// get native endianness as either endiannessBig or accessorLittle
 // for programs running in emulation mode (e.g. Rosetta) this is the native endianness of the emulated code
 accessorEndianness accessorGetNativeEndianness(void);
 
@@ -312,12 +315,12 @@ accessorEndianness accessorNativeOrReverseEndianness(accessorEndianness e);
 accessorEndianness accessorOppositeEndianness(accessorEndianness e);
 
 // get or set default endianness for future accessor creations
-// initially, default endianness is native
+// initially, default endianness is accessorNative
 // default endianness is globally shared among all threads
 accessorEndianness accessorDefaultEndianness(void);                     // for future accessors
 accessorStatus accessorSetDefaultEndianness(accessorEndianness e);      // for future accessors
 
-// get or set default endianness for an accessor
+// get or set current endianness for an accessor
 accessorEndianness accessorCurrentEndianness(const accessor_t * a);
 accessorStatus accessorSetCurrentEndianness(accessor_t * a, accessorEndianness e);
 
@@ -341,25 +344,26 @@ accessorStatus accessorReadEndianInt64(accessor_t * a, int64_t * x, accessorEndi
 accessorStatus accessorReadEndianFloat32(accessor_t * a, float * x, accessorEndianness e);                                          // read a float at cursor
 accessorStatus accessorReadEndianFloat64(accessor_t * a, double * x, accessorEndianness e);                                         // read a double at cursor
 
-// using accessor's endianness
-accessorStatus accessorReadUInt(accessor_t * a, uintmax_t * x, size_t nbytes);                                                      // read a nbytes wide unsigned integer at cursor using accessor's default endianness
-accessorStatus accessorReadUInt8(accessor_t * a, uint8_t * x);                                                                      // read a 1 byte unsigned integer at cursor using accessor's default endianness
-accessorStatus accessorReadUInt16(accessor_t * a, uint16_t * x);                                                                    // read a 2 bytes unsigned integer at cursor using accessor's default endianness
-accessorStatus accessorReadUInt24(accessor_t * a, uint32_t * x);                                                                    // read a 3 bytes unsigned integer at cursor using accessor's default endianness
-accessorStatus accessorReadUInt32(accessor_t * a, uint32_t * x);                                                                    // read a 4 bytes unsigned integer at cursor using accessor's default endianness
-accessorStatus accessorReadUInt64(accessor_t * a, uint64_t * x);                                                                    // read a 8 bytes unsigned integer at cursor using accessor's default endianness
+// the same, using accessor's current endianness
+accessorStatus accessorReadUInt(accessor_t * a, uintmax_t * x, size_t nbytes);                                                      // read a nbytes wide unsigned integer at cursor using accessor's current endianness
+accessorStatus accessorReadUInt8(accessor_t * a, uint8_t * x);                                                                      // read a 1 byte unsigned integer at cursor using accessor's current endianness
+accessorStatus accessorReadUInt16(accessor_t * a, uint16_t * x);                                                                    // read a 2 bytes unsigned integer at cursor using accessor's current endianness
+accessorStatus accessorReadUInt24(accessor_t * a, uint32_t * x);                                                                    // read a 3 bytes unsigned integer at cursor using accessor's current endianness
+accessorStatus accessorReadUInt32(accessor_t * a, uint32_t * x);                                                                    // read a 4 bytes unsigned integer at cursor using accessor's current endianness
+accessorStatus accessorReadUInt64(accessor_t * a, uint64_t * x);                                                                    // read a 8 bytes unsigned integer at cursor using accessor's current endianness
 
-accessorStatus accessorReadInt(accessor_t * a, intmax_t * x, size_t nbytes);                                                        // read a nbytes wide integer at cursor using accessor's default endianness
-accessorStatus accessorReadInt8(accessor_t * a, int8_t * x);                                                                        // read a 1 byte integer at cursor using accessor's default endianness
-accessorStatus accessorReadInt16(accessor_t * a, int16_t * x);                                                                      // read a 2 bytes integer at cursor using accessor's default endianness
-accessorStatus accessorReadInt24(accessor_t * a, int32_t * x);                                                                      // read a 3 bytes integer at cursor using accessor's default endianness
-accessorStatus accessorReadInt32(accessor_t * a, int32_t * x);                                                                      // read a 4 bytes integer at cursor using accessor's default endianness
-accessorStatus accessorReadInt64(accessor_t * a, int64_t * x);                                                                      // read a 8 bytes integer at cursor using accessor's default endianness
+accessorStatus accessorReadInt(accessor_t * a, intmax_t * x, size_t nbytes);                                                        // read a nbytes wide integer at cursor using accessor's current endianness
+accessorStatus accessorReadInt8(accessor_t * a, int8_t * x);                                                                        // read a 1 byte integer at cursor using accessor's current endianness
+accessorStatus accessorReadInt16(accessor_t * a, int16_t * x);                                                                      // read a 2 bytes integer at cursor using accessor's current endianness
+accessorStatus accessorReadInt24(accessor_t * a, int32_t * x);                                                                      // read a 3 bytes integer at cursor using accessor's current endianness
+accessorStatus accessorReadInt32(accessor_t * a, int32_t * x);                                                                      // read a 4 bytes integer at cursor using accessor's current endianness
+accessorStatus accessorReadInt64(accessor_t * a, int64_t * x);                                                                      // read a 8 bytes integer at cursor using accessor's current endianness
 
-accessorStatus accessorReadFloat32(accessor_t * a, float * x);                                                                      // read a float at cursor using accessor's default endianness
-accessorStatus accessorReadFloat64(accessor_t * a, double * x);                                                                     // read a double at cursor using accessor's default endianness
+accessorStatus accessorReadFloat32(accessor_t * a, float * x);                                                                      // read a float at cursor using accessor's current endianness
+accessorStatus accessorReadFloat64(accessor_t * a, double * x);                                                                     // read a double at cursor using accessor's current endianness
 
 // Varint and zigzag numbers are as found in protobuf (protocol buffers)
+// Their endianness is fixed and can't be changed
 accessorStatus accessorReadVarInt(accessor_t * a, uintmax_t * x);                                                                   // read an unsigned base 128 varint at cursor. as varints have no upper limit, an error is returned if x overflows uintmax_t
 accessorStatus accessorReadZigZagInt(accessor_t * a, intmax_t * x);                                                                 // read a signed base 128 zigzag integer at cursor. as zigzag ints have no lower/upper limit, an error is returned if x overflows intmax_t
 
@@ -382,23 +386,23 @@ accessorStatus accessorWriteEndianInt64(accessor_t * a, int64_t x, accessorEndia
 accessorStatus accessorWriteEndianFloat32(accessor_t * a, float x, accessorEndianness e);                                           // write a 4 bytes float at cursor
 accessorStatus accessorWriteEndianFloat64(accessor_t * a, double x, accessorEndianness e);                                          // write a 8 bytes float at cursor
 
-// using accessor's endianness
-accessorStatus accessorWriteUInt(accessor_t * a, uintmax_t x, size_t nbytes);                                                       // write a nbytes wide unsigned integer at cursor using accessor's default endianness
-accessorStatus accessorWriteUInt8(accessor_t * a, uint8_t x);                                                                       // write a 1 byte unsigned integer at cursor using accessor's default endianness
-accessorStatus accessorWriteUInt16(accessor_t * a, uint16_t x);                                                                     // write a 2 bytes unsigned integer at cursor using accessor's default endianness
-accessorStatus accessorWriteUInt24(accessor_t * a, uint32_t x);                                                                     // write a 3 bytes unsigned integer at cursor using accessor's default endianness
-accessorStatus accessorWriteUInt32(accessor_t * a, uint32_t x);                                                                     // write a 4 bytes unsigned integer at cursor using accessor's default endianness
-accessorStatus accessorWriteUInt64(accessor_t * a, uint64_t x);                                                                     // write a 8 bytes unsigned integer at cursor using accessor's default endianness
+// the same, using accessor's endianness
+accessorStatus accessorWriteUInt(accessor_t * a, uintmax_t x, size_t nbytes);                                                       // write a nbytes wide unsigned integer at cursor using accessor's current endianness
+accessorStatus accessorWriteUInt8(accessor_t * a, uint8_t x);                                                                       // write a 1 byte unsigned integer at cursor using accessor's current endianness
+accessorStatus accessorWriteUInt16(accessor_t * a, uint16_t x);                                                                     // write a 2 bytes unsigned integer at cursor using accessor's current endianness
+accessorStatus accessorWriteUInt24(accessor_t * a, uint32_t x);                                                                     // write a 3 bytes unsigned integer at cursor using accessor's current endianness
+accessorStatus accessorWriteUInt32(accessor_t * a, uint32_t x);                                                                     // write a 4 bytes unsigned integer at cursor using accessor's current endianness
+accessorStatus accessorWriteUInt64(accessor_t * a, uint64_t x);                                                                     // write a 8 bytes unsigned integer at cursor using accessor's current endianness
 
-accessorStatus accessorWriteInt(accessor_t * a, intmax_t x, size_t nbytes);                                                         // write a nbytes wide integer at cursor using accessor's default endianness
-accessorStatus accessorWriteInt8(accessor_t * a, int8_t x);                                                                         // write a 1 byte integer at cursor using accessor's default endianness
-accessorStatus accessorWriteInt16(accessor_t * a, int16_t x);                                                                       // write a 2 bytes integer at cursor using accessor's default endianness
-accessorStatus accessorWriteInt24(accessor_t * a, int32_t x);                                                                       // write a 3 bytes integer at cursor using accessor's default endianness
-accessorStatus accessorWriteInt32(accessor_t * a, int32_t x);                                                                       // write a 4 bytes integer at cursor using accessor's default endianness
-accessorStatus accessorWriteInt64(accessor_t * a, int64_t x);                                                                       // write a 8 bytes integer at cursor using accessor's default endianness
+accessorStatus accessorWriteInt(accessor_t * a, intmax_t x, size_t nbytes);                                                         // write a nbytes wide integer at cursor using accessor's current endianness
+accessorStatus accessorWriteInt8(accessor_t * a, int8_t x);                                                                         // write a 1 byte integer at cursor using accessor's current endianness
+accessorStatus accessorWriteInt16(accessor_t * a, int16_t x);                                                                       // write a 2 bytes integer at cursor using accessor's current endianness
+accessorStatus accessorWriteInt24(accessor_t * a, int32_t x);                                                                       // write a 3 bytes integer at cursor using accessor's current endianness
+accessorStatus accessorWriteInt32(accessor_t * a, int32_t x);                                                                       // write a 4 bytes integer at cursor using accessor's current endianness
+accessorStatus accessorWriteInt64(accessor_t * a, int64_t x);                                                                       // write a 8 bytes integer at cursor using accessor's current endianness
 
-accessorStatus accessorWriteFloat32(accessor_t * a, float x);                                                                       // write a 4 bytes float at cursor using accessor's default endianness
-accessorStatus accessorWriteFloat64(accessor_t * a, double x);                                                                      // write a 8 bytes float at cursor using accessor's default endianness
+accessorStatus accessorWriteFloat32(accessor_t * a, float x);                                                                       // write a 4 bytes float at cursor using accessor's current endianness
+accessorStatus accessorWriteFloat64(accessor_t * a, double x);                                                                      // write a 8 bytes float at cursor using accessor's current endianness
 
 accessorStatus accessorWriteVarInt(accessor_t * a, uintmax_t x);                                                                    // write an unsigned base 128 varint at cursor
 accessorStatus accessorWriteZigZagInt(accessor_t * a, intmax_t x);                                                                  // write a signed zigzag base 128 varint integer at cursor
@@ -422,6 +426,7 @@ accessorStatus accessorReadEndianInt64Array(accessor_t * a, int64_t ** array, si
 accessorStatus accessorReadEndianFloat32Array(accessor_t * a, float ** array, size_t count, accessorEndianness e);                  // read an array of 4 bytes floats at cursor
 accessorStatus accessorReadEndianFloat64Array(accessor_t * a, double ** array, size_t count, accessorEndianness e);                 // read an array of 8 bytes floats at cursor
 
+// the same, using accessor's current endianness
 accessorStatus accessorReadUInt16Array(accessor_t * a, uint16_t ** array, size_t count);                                            // read an array of 2 bytes integers at cursor
 accessorStatus accessorReadUInt24Array(accessor_t * a, uint32_t ** array, size_t count);                                            // read an array of 3 bytes integers at cursor
 accessorStatus accessorReadUInt32Array(accessor_t * a, uint32_t ** array, size_t count);                                            // read an array of 4 bytes integers at cursor
@@ -452,6 +457,7 @@ accessorStatus accessorWriteEndianInt64Array(accessor_t * a, const int64_t * arr
 accessorStatus accessorWriteEndianFloat32Array(accessor_t * a, float * array, size_t count, accessorEndianness e);                  // write an array of 4 bytes floats at cursor
 accessorStatus accessorWriteEndianFloat64Array(accessor_t * a, double * array, size_t count, accessorEndianness e);                 // write an array of 8 bytes floats at cursor
 
+// the same, using accessor's current endianness
 accessorStatus accessorWriteUInt16Array(accessor_t * a, const uint16_t * array, size_t count);                                      // write an array of 2 bytes unsigned integer at cursor
 accessorStatus accessorWriteUInt24Array(accessor_t * a, const uint32_t * array, size_t count);                                      // write an array of 3 bytes unsigned integer at cursor
 accessorStatus accessorWriteUInt32Array(accessor_t * a, const uint32_t * array, size_t count);                                      // write an array of 4 bytes unsigned integer at cursor
@@ -470,7 +476,7 @@ accessorStatus accessorWriteFloat64Array(accessor_t * a, double * array, size_t 
 // block read
 
 // reading from an accessor involves a memory transfer from accessor's data to destination
-// see accessorGetPointerForBytesToRead() if you prefer reading accessor's internal data
+// see accessorGetPointerForBytesToRead() if you prefer reading accessor's internal data, avoiding an intermedaite memory transfer
 accessorStatus accessorReadEndianBytes(accessor_t * a, void * ptr, size_t count, accessorEndianness e);                             // read a chunk of bytes, maybe in reverse order. ptr must be able to hold count bytes
 accessorStatus accessorReadBytes(accessor_t * a, void * ptr, size_t count);                                                         // read a chunk of bytes, ptr must be able to hold size bytes
 accessorStatus accessorReadAllocatedEndianBytes(accessor_t * a, void ** ptr, size_t count, accessorEndianness e);                   // read a chunk of bytes, maybe in reverse order, *ptr is allocated, it is up to caller to free() it
@@ -481,7 +487,7 @@ accessorStatus accessorReadAllocatedBytes(accessor_t * a, void ** ptr, size_t co
 // block write
 
 // writing to an accessor involves a memory transfer from source to accessor's data
-// see accessorGetPointerForBytesToWrite() if you prefer writing accessor's internal data
+// see accessorGetPointerForBytesToWrite() if you prefer writing accessor's internal data, avoiding an intermedaite memory transfer
 accessorStatus accessorWriteEndianBytes(accessor_t * a, const void * ptr, size_t count, accessorEndianness e);                      // write a chunk of bytes, maybe in reverse order
 accessorStatus accessorWriteBytes(accessor_t * a, const void * ptr, size_t count);                                                  // write a chunk of bytes
 accessorStatus accessorWriteRepeatedByte(accessor_t * a, uint8_t byte, size_t count);                                               // write a serie of identical bytes
@@ -503,8 +509,8 @@ size_t accessorLookAheadEndianBytes(const accessor_t * a, void * ptr, size_t cou
 size_t accessorLookAheadBytes(const accessor_t * a, void * ptr, size_t count);                                                      // read up to count bytes. ptr must be able to hold size bytes
 
 // count bytes occuring before given delimiter, up to a maximum of countLimit
-// no data is transferred transfer
-// countLimit and returned count don't include delimiter
+// no data is transferred
+// countLimit and returned count don't include the delimiter
 // returns accessorBeyondEnd if delimiter not found within limits
 // countLimit == ACCESSOR_UNTIL_END means up to end of data, other countLimit values are taken literally
 // delimiter is an array of delLength bytes
@@ -523,8 +529,8 @@ size_t accessorLookAheadAvailableBytes(const accessor_t * a, const void ** ptr);
 // the read string is converted to a zero-terminated string and is allocated, it's up to caller to free() it
 // if length is not NULL, *length is set to returned string's (char|uint16_t|uin32_t) transfer count
 // where applicable, returned length is not adjusted for NUL (char|uint16_t|uin32_t) in the middle of the string
-accessorStatus accessorReadCString(accessor_t * a, char ** str, size_t * length);                                                   // read a C string up to trailing 0 byte end of string marker
-accessorStatus accessorReadPString(accessor_t * a, char ** str, size_t * length);                                                   // read a pstring (one byte for string length followed by string)
+accessorStatus accessorReadCString(accessor_t * a, char ** str, size_t * length);                                                   // read a C string up to trailing NUL byte end of string marker
+accessorStatus accessorReadPString(accessor_t * a, char ** str, size_t * length);                                                   // read a pstring (one unsigned byte for string length followed by the unterminated string), converted to C string
 accessorStatus accessorReadFixedLengthString(accessor_t * a, char ** str, size_t length);                                           // read an unterminated fixed length string, converted to C string
 accessorStatus accessorReadPaddedString(accessor_t * a, char ** str, size_t * length, char pad);                                    // read a padded string, converted to C string, trailing padding removed, on input *length is the padded length, on return it is the length of result, stripped from trailing pad characters
 accessorStatus accessorReadEndianString16(accessor_t * a, uint16_t ** str, size_t * length, accessorEndianness e);                  // read a 16-bits chars string up to NUL using specified endianness
@@ -537,7 +543,8 @@ accessorStatus accessorReadString32(accessor_t * a, uint32_t ** str, size_t * le
 // string write
 
 // The accessorWrite...WithLength variants are intended to optimize speed when the string's length is known. Given length must match string's length else behavior is undefined.
-// as its length is given, str doesn't have to be terminated by a NUL (8, 16 or 32 bits wide) character but a trailing NUL is nonetheless appended to written bytes, if needed
+// as its length is given, str doesn't have to be terminated by a NUL (8, 16 or 32 bits wide) character but a NUL termionator is nonetheless appended to written bytes, if applicable
+// for String[16|32], length is the element count, not the byte count
 accessorStatus accessorWriteCStringWithLength(accessor_t * a, const char * str, size_t length);                                     // write a C string including trailing NUL
 accessorStatus accessorWritePStringWithLength(accessor_t * a, const char * str, size_t length);                                     // write a C string as a pstring. if larger than 255 chars, accessorInvalidParameter is returned
 accessorStatus accessorWritePaddedStringWithLength(accessor_t * a, const char * str, size_t length, size_t paddedLength, char pad); // write a C string as a padded string, padded up to paddedLength chars. if string is too long, accessorInvalidParameter is returned
@@ -575,8 +582,8 @@ accessorStatus accessorGetPointerForBytesToWrite(accessor_t * a, void ** ptr, si
 void accessorSetCoverageUsage(accessor_t * a, uintmax_t usage1, const void * usage2);
 
 // add a single coverage record to accessor of count bytes at given offset of accessor's window
-// forceOption may be used to override disabled coverage (but not suspended)
-// count may be set to ACCESSOR_UNTIL_END
+// forceOption may be used to override disabled (but not suspended) coverage
+// count == ACCESSOR_UNTIL_END means "up to end of accessor's window", other count values are taken literally
 void accessorAddCoverageRecord(accessor_t * a, size_t offset, size_t count, uintmax_t usage1, const void * usage2, accessorCoverageForceOption forceOption);
 
 // get or set coverage enabled status
@@ -589,7 +596,7 @@ void accessorResumeCoverage(accessor_t * a);
 
 // get the coverage record array
 // size pointer may not be NULL.
-// returned array may be NULL if *size is 0.
+// returned array may be NULL if returned *size is 0.
 // this array isn't sorted/merged unless accessorEndOfCoverage() was called
 const accessorCoverageRecord * accessorCoverageArray(const accessor_t * a, size_t * size);
 
@@ -608,7 +615,7 @@ void accessorSummarizeCoverage(accessor_t * a, int (* compare)(const void * a, c
 uint32_t accessorBuildNumber(void);                                                                                                 // get accessor toolkit build version
 
 // swap two accessors
-// if only one of a1 or a2 is readonly, the other becomes readonly, keeping its accessorClose write-specific action such as writing its content to file.
+// if only one of a1 or a2 is readonly, the other becomes readonly, keeping its accessorClose write-specific action (such as writing its content to file).
 // if both a1 and a2 are read accessors, both keep their readonly status
 // if both a1 and a2 are write accessors, both keep their write enabled status
 accessorStatus accessorSwap(accessor_t ** a1, accessor_t ** a2);

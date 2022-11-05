@@ -4,13 +4,13 @@
 
 ​	Accessors take care of:
 
-- reading/writing integers of various signedness, endianness and size, from 1 to sizeof(uintmax_t).
-- reading/writing floats of various endianness (both 32 and 64 bits)
+- reading/writing integers of various signedness, endianness and size, from 1 to `sizeof(uintmax_t)`.
+- reading/writing 32 and 64 bits floats of various endianness.
 - reading/writing arrays of numbers (of various endianness and size)
 - endianness is settable for every read/write operations
-- errors detection such as reading beyond EOF
+- complete error detection such as reading beyond EOF, invalid data etc.
 - coverage recording (i.e. recording which part of a file where read and why)
-- saving/restoring the cursor
+- saving/restoring the cursor.
 - etc.
 
 Your feedback is welcome.
