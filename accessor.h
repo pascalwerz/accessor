@@ -38,13 +38,21 @@ extern "C" {
 
 
 
-#define ACCESSOR_BUILD          102
+#define ACCESSOR_BUILD_NUMBER   103
 // Version history:
 //
 //  Build   Date            Comment
+//  103     05-NOV-2022     optimized accessorSwap[U]Int for common number width
 //  102     03-NOV-2022     stop using mktemp. when reading or mapping a file, only the window (possibly rounded to page boundary) is read or mapped
 //  101     14-OCT-2022     small files are always read in memory, not mapped
 //  100     05-OCT-2022     a completely rewritten successor to original accessor toolkit build 25, faster and safer
+
+
+
+#define KB  1024
+#define MB  (KB*KB)
+#define GB  (KB*KB*KB)
+#define TB  (KB*KB*KB*KB)
 
 
 
@@ -55,9 +63,9 @@ extern "C" {
 #define ACCESSOR_USE_MMAP               1
 #endif
 
-// accessing a file window smaller than ACCESSOR_MMAP_MIN_FILESIZE will avoid mapping it.
+// read accessing a file's window smaller than ACCESSOR_MMAP_MIN_FILESIZE will avoid mapping it.
 #ifndef ACCESSOR_MMAP_MIN_FILESIZE
-#define ACCESSOR_MMAP_MIN_FILESIZE      (16 * 1024)
+#define ACCESSOR_MMAP_MIN_FILESIZE      (16 * KB)
 #endif
 
 
@@ -609,6 +617,8 @@ accessorStatus accessorSwap(accessor_t ** a1, accessor_t ** a2);
 void accessorSwapBytes(void * ptr, size_t nbytes);                                                                                  // bytes are reordered from last to first
 
 // swap integers, reversing their endianness
+// on input, unused high order bits are ignored
+// on output, unused high order bits are 0 for accessorSwapUInt and identical to the sign bit for accessorSwapInt
 uintmax_t accessorSwapUInt(uintmax_t x, size_t nbytes);                                                                             // valid for unsigned ints only
 intmax_t accessorSwapInt(intmax_t x, size_t nbytes);                                                                                // valid for signed ints only
 uint16_t accessorSwapUInt16(uint16_t x);                                                                                            // valid for signed and unsigned ints

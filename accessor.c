@@ -17,8 +17,8 @@
 
 
 
-#define ACCESSOR_RW_COUNT_LIMIT        0x40000000              // maximum read() transfer size. 1 GB seems safe as 2 GB leads to EINVAL errors, Linux limit is just under 2 GB
-#define ACCESSOR_SELECT_32_64(X32, X64)      ((sizeof (void *) * CHAR_BIT < 64) ? (X32) : (X64))
+#define ACCESSOR_RW_COUNT_LIMIT     (1 * GB)    // maximum read() transfer size. 1 GB seems safe as 2 GB leads to EINVAL errors, Linux limit is just under 2 GB
+#define ACCESSOR_SELECT_32_64(X32, X64)     ((sizeof (void *) * CHAR_BIT < 64) ? (X32) : (X64))
 
 
 
@@ -110,8 +110,8 @@ static inline uintmax_t accessorPrivateRoundUpwardsToNonNullMultiple(uintmax_t x
 
 // private global variables
 static char accessorPrivateAccessorInited = 0;                                  // endianness initialization flag
-static char accessorPrivateIsBigEndianness[4];                                  // resolve all 4 endianness to accessorBig or accessorLittle
-static char accessorPrivateIsReverseEndianness[4];                              // resolve all 4 endianness to accessorNative or accessorReverse
+static char accessorPrivateIsBigEndianness[ACCESSOR_ENDIANNESS_COUNT];          // resolve all 4 endianness to accessorBig or accessorLittle
+static char accessorPrivateIsReverseEndianness[ACCESSOR_ENDIANNESS_COUNT];      // resolve all 4 endianness to accessorNative or accessorReverse
 static accessorEndianness accessorPrivateNativeEndianness = accessorNative;     // will be set to either accessorBig or accessorLittle by accessorPrivateInitializeEndianness()
 static accessorEndianness accessorPrivateDefaultEndianness = accessorNative;    // can be any endianness
 
@@ -119,7 +119,7 @@ static accessorEndianness accessorPrivateDefaultEndianness = accessorNative;    
 
 uint32_t accessorBuildNumber(void)
 {
-    return ACCESSOR_BUILD;
+    return ACCESSOR_BUILD_NUMBER;
 }
 
 
@@ -222,7 +222,7 @@ static accessorStatus accessorPrivateCreateEmpty(accessor_t ** a)
     result->data = NULL;
     result->dataMaxSize = 0;
     result->dataFileOffset = 0;
-    result->granularity = ACCESSOR_SELECT_32_64(4 * 1024, 64 * 1024);
+    result->granularity = ACCESSOR_SELECT_32_64(4 * KB, 64 * KB);
     result->isMapped = 0;
     result->mayBeReallocated = 0;
     result->freeOnClose = 0;
@@ -424,12 +424,12 @@ accessorStatus accessorOpenWritingMemory(accessor_t ** a, size_t initialAllocati
         return status;
 
     if (granularity == 0)
-        granularity = ACCESSOR_SELECT_32_64(4 * 1024, 64 * 1024);
+        granularity = ACCESSOR_SELECT_32_64(4 * KB, 64 * KB);
 
-    if (initialAllocation > ACCESSOR_SELECT_32_64(1 * 1024 * 1024, 16 * 1024 * 1024))
+    if (initialAllocation > ACCESSOR_SELECT_32_64(1 * MB, 16 * MB))
     {
-        initialAllocation = ACCESSOR_SELECT_32_64(1 * 1024 * 1024, 16 * 1024 * 1024);
-        granularity = ACCESSOR_SELECT_32_64(1 * 1024 * 1024, 16 * 1024 * 1024);
+        initialAllocation = ACCESSOR_SELECT_32_64(1 * MB, 16 * MB);
+        granularity = ACCESSOR_SELECT_32_64(1 * MB, 16 * MB);
     }
 
     initialAllocation = accessorPrivateRoundUpwardsToNonNullMultiple(initialAllocation, granularity);
@@ -467,12 +467,12 @@ accessorStatus accessorOpenWritingFile(accessor_t ** a, const char * basePath, c
         return status;
 
     if (granularity == 0)
-        granularity = ACCESSOR_SELECT_32_64(4 * 1024, 64 * 1024);
+        granularity = ACCESSOR_SELECT_32_64(4 * KB, 64 * KB);
 
-    if (initialAllocation > ACCESSOR_SELECT_32_64(1 * 1024 * 1024, 16 * 1024 * 1024))
+    if (initialAllocation > ACCESSOR_SELECT_32_64(1 * MB, 16 * MB))
     {
-        initialAllocation = ACCESSOR_SELECT_32_64(1 * 1024 * 1024, 16 * 1024 * 1024);
-        granularity = ACCESSOR_SELECT_32_64(1 * 1024 * 1024, 16 * 1024 * 1024);
+        initialAllocation = ACCESSOR_SELECT_32_64(1 * MB, 16 * MB);
+        granularity = ACCESSOR_SELECT_32_64(1 * MB, 16 * MB);
     }
 
     initialAllocation = accessorPrivateRoundUpwardsToNonNullMultiple(initialAllocation, granularity);
@@ -4302,27 +4302,160 @@ void accessorSwapBytes(void * ptr, size_t nbytes)
 uintmax_t accessorSwapUInt(uintmax_t x, size_t nbytes)
 {
     uint8_t tmp[sizeof(uintmax_t)];
+#if !defined(__llvm__) && !defined(__x86_64__) && !defined(__i386__)
+    union
+    {
+        uint64_t _u64;
+        uint32_t _u32[2];
+    } _u;
+#endif
 
 
-    if (nbytes > sizeof(uintmax_t))
-        return accessorInvalidParameter;
+    switch(nbytes)
+    {
+    case 0:
+        return 0;
 
-    accessorPrivateWriteUIntAtPointer(&tmp, x, accessorLittle, nbytes);
-    return accessorPrivateReadUIntAtPointer(&tmp, accessorBig, nbytes);
+    case 1:
+        return x & 0xff;
+
+    case 2:
+        return ((uint16_t)((x << 8) | ((x & 0xff00) >> 8)));
+
+    case 3:
+        return ((x & 0xff) << 16) | (x & 0xff00) | ((x & 0xff0000) >> 16);
+
+    case 4:
+#if defined(__llvm__)
+        return __builtin_bswap32((uint32_t) x);
+#elif defined(__x86_64__) || defined(__i386__)
+        __asm__ ("bswap      %0" : "+r" (x));
+        return x;
+#else
+        // This actually generates the best code
+        return (((x ^ (x >> 16 | (x << 16))) & 0xff00ffff) >> 8) ^ (x >> 8 | x << 24);
+#endif
+
+    case 8:
+#if defined(__llvm__)
+        return __builtin_bswap64(x);
+#else
+#if defined(__x86_64__)
+        __asm__ ("bswap      %0" : "+r" (x));
+        return _data;
+#elif defined(__i386__)
+        __asm__ ("bswap      %%eax\n\t"
+                 "bswap      %%edx\n\t"
+                 "xchgl      %%eax, %%edx"
+                 : "+A" (x));
+        return x;
+#else
+        union
+        {
+            uint64_t _u64;
+            uint32_t _u32[2];
+        } _u;
+
+        // This actually generates the best code
+        _u._u32[0] = (uint32_t)(x >> 32);
+        _u._u32[1] = (uint32_t)(x & 0xffffffff);
+        _u._u32[0] = accessorSwapUInt32(_u._u32[0]);
+        _u._u32[1] = accessorSwapUInt32(_u._u32[1]);
+
+        return _u._u64;
+#endif
+#endif
+
+    default:
+        if (nbytes > sizeof(uintmax_t))
+            return accessorInvalidParameter;
+
+        accessorPrivateWriteUIntAtPointer(&tmp, x, accessorLittle, nbytes);
+        return accessorPrivateReadUIntAtPointer(&tmp, accessorBig, nbytes);
+    }
 }
 
 
 
 intmax_t accessorSwapInt(intmax_t x, size_t nbytes)
 {
-    uint8_t tmp[sizeof(intmax_t)];
+    uint8_t tmp[sizeof(uintmax_t)];
+    int32_t tmp32;
+#if !defined(__llvm__) && !defined(__x86_64__) && !defined(__i386__)
+    union
+    {
+        uint64_t _u64;
+        uint32_t _u32[2];
+    } _u;
+#endif
 
 
-    if (nbytes > sizeof(intmax_t))
-        return accessorInvalidParameter;
+    switch(nbytes)
+    {
+    case 0:
+        return 0;
 
-    accessorPrivateWriteUIntAtPointer(&tmp, (uintmax_t) x, accessorLittle, nbytes); // accessorLittle because it is the opposite of the accessorBig that follows
-    return accessorPrivateReadIntAtPointer (&tmp, accessorBig, nbytes);             // accessorPrivateReadIntAtPointer is faster with accessorBig
+    case 1:
+        return x;
+
+    case 2:
+        return (intmax_t) ((int16_t)((((uint16_t) x) << 8) | ((x & 0xff00) >> 8)));
+
+    case 3:
+        tmp32 = (int32_t) ((x & 0xff) << 16) | (x & 0xff00) | ((x & 0xff0000) >> 16);
+        if (tmp32 & 0x800000)
+            return tmp32 | (int32_t) 0xff000000;
+        else
+            return tmp32;
+
+    case 4:
+#if defined(__llvm__)
+        return (int32_t) __builtin_bswap32((uint32_t) x);
+#elif defined(__x86_64__) || defined(__i386__)
+        __asm__ ("bswap      %0" : "+r" (x));
+        return x;
+#else
+        // This actually generates the best code
+        return (((x ^ (x >> 16 | (x << 16))) & 0xff00ffff) >> 8) ^ (x >> 8 | x << 24);
+#endif
+
+    case 8:
+#if defined(__llvm__)
+        return (int64_t) __builtin_bswap64((uint64_t) x);
+#else
+#if defined(__x86_64__)
+        __asm__ ("bswap      %0" : "+r" (x));
+        return _data;
+#elif defined(__i386__)
+        __asm__ ("bswap      %%eax\n\t"
+                 "bswap      %%edx\n\t"
+                 "xchgl      %%eax, %%edx"
+                 : "+A" (x));
+        return x;
+#else
+        union
+        {
+            uint64_t _u64;
+            uint32_t _u32[2];
+        } _u;
+
+        // This actually generates the best code
+        _u._u32[0] = (uint32_t)(x >> 32);
+        _u._u32[1] = (uint32_t)(x & 0xffffffff);
+        _u._u32[0] = accessorSwapUInt32(_u._u32[0]);
+        _u._u32[1] = accessorSwapUInt32(_u._u32[1]);
+
+        return _u._u64;
+#endif
+#endif
+
+    default:
+        if (nbytes > sizeof(uintmax_t))
+            return accessorInvalidParameter;
+
+        accessorPrivateWriteUIntAtPointer(&tmp, (uintmax_t) x, accessorLittle, nbytes);
+        return accessorPrivateReadIntAtPointer(&tmp, accessorBig, nbytes);
+    }
 }
 
 
@@ -4392,10 +4525,10 @@ uint64_t accessorSwapUInt64(uint64_t x)
     } _u;
 
     // This actually generates the best code
-    _u.u32[0] = (uint32_t)(x >> 32);
-    _u.u32[1] = (uint32_t)(x & 0xffffffff);
-    _u.u32[0] = accessorSwapUInt32(_u.u32[0]);
-    _u.u32[1] = accessorSwapUInt32(_u.u32[1]);
+    _u._u32[0] = (uint32_t)(x >> 32);
+    _u._u32[1] = (uint32_t)(x & 0xffffffff);
+    _u._u32[0] = accessorSwapUInt32(_u._u32[0]);
+    _u._u32[1] = accessorSwapUInt32(_u._u32[1]);
 
     return _u._u64;
 #endif
