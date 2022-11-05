@@ -591,12 +591,13 @@ accessorCoverageOption accessorIsCoverageAllowed(const accessor_t * a);         
 void accessorAllowCoverage(accessor_t * a, accessorCoverageOption option);
 
 // increment or decrement coverage suspend count. if suspend count is not 0, no coverage is recorded even if coverage is enabled
+// accessorSuspendCoverage and accessorResumeCoverage must be paired else behavior is undefined
 void accessorSuspendCoverage(accessor_t * a);
 void accessorResumeCoverage(accessor_t * a);
 
 // get the coverage record array
 // size pointer may not be NULL.
-// returned array may be NULL if returned *size is 0.
+// returned array pointer may be NULL if returned *size is 0.
 // this array isn't sorted/merged unless accessorEndOfCoverage() was called
 const accessorCoverageRecord * accessorCoverageArray(const accessor_t * a, size_t * size);
 
