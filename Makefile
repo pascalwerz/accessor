@@ -16,10 +16,10 @@ else
 endif
 
 ifeq ($(OS),Darwin)
-	ARCHS=-arch x86_64 -arch i386 -arch arm64
+	CC_EXTRA_FLAGS=-arch arm64 -arch x86_64 -arch i386
 	CC=cc -O3
 else
-	ARCHS=
+	CC_EXTRA_FLAGS=
 	CC=gcc -O3
 endif
 
@@ -50,13 +50,13 @@ binaries: accessor.tgz
 staticlibrary: accessor.a
 
 %.o: %.c Makefile
-	$(CC) $(ARCHS) $(DEBUGFLAGS) $(CFLAGS) -o $@ -c $<
+	$(CC) $(CC_EXTRA_FLAGS) $(DEBUGFLAGS) $(CFLAGS) -o $@ -c $<
 
 accessor.a: $(ACCESSOR_OBJECT_FILES)
 	libtool $(LIBTOOL_FLAGS) -o accessor.a $^
 
 accessor.o: accessor.c accessor.h Makefile
-	$(CC) $(ARCHS) $(DEBUGFLAGS) $(CFLAGS) -c -o accessor.o accessor.c
+	$(CC) $(CC_EXTRA_FLAGS) $(DEBUGFLAGS) $(CFLAGS) -c -o accessor.o accessor.c
 
 tests: tests.c accessor.a Makefile
 	$(CC) $(DEBUGFLAGS) $(CFLAGS) -o tests tests.c accessor.a
