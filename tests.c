@@ -17,7 +17,7 @@
 #include <string.h>
 #include <unistd.h>		// for mkdtemp etc.
 #include <libgen.h>     // for basename
-
+#include <time.h>       // for time
 
 
 #define CHECK_EQ(x, v)      do { if ((x) != (v)) debugBreakpoint(__LINE__); } while (0)
@@ -60,6 +60,7 @@ int main(int argc, char *argv[])
 
     printf("testing accessor build %ju\n", (uintmax_t) accessorBuildNumber());
 
+    srandom((unsigned int) time(NULL));
     testEndianness();
     for (uintmax_t i = 1; i <= ACCESSOR_TEST_ITERATIONS; i++)
     {
