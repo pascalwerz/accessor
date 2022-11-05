@@ -618,7 +618,7 @@ void accessorSwapBytes(void * ptr, size_t nbytes);                              
 
 // swap integers, reversing their endianness
 // on input, unused high order bits are ignored
-// on output, unused high order bits are 0 for accessorSwapUInt and identical to the sign bit for accessorSwapInt
+// on output, unused high order bits are exact
 uintmax_t accessorSwapUInt(uintmax_t x, size_t nbytes);                                                                             // valid for unsigned ints only
 intmax_t accessorSwapInt(intmax_t x, size_t nbytes);                                                                                // valid for signed ints only
 uint16_t accessorSwapUInt16(uint16_t x);                                                                                            // valid for signed and unsigned ints
