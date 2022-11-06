@@ -17,7 +17,17 @@
 
 
 
-#define ACCESSOR_RW_COUNT_LIMIT     (1 * GB)    // maximum read() transfer size. 1 GB seems safe as 2 GB leads to EINVAL errors, Linux limit is just under 2 GB
+#define KB  1024
+#define MB  (1024*KB)
+#define GB  (1024*MB)
+#define TB  (1024*GB)
+
+
+
+// maximum read() transfer size. 1 GB seems safe as 2 GB leads to EINVAL errors, Linux limit is just under 2 GB
+#define ACCESSOR_RW_COUNT_LIMIT             (1 * GB)
+
+// helper to select a value according to 32/64 bit code
 #define ACCESSOR_SELECT_32_64(X32, X64)     ((sizeof (void *) * CHAR_BIT < 64) ? (X32) : (X64))
 
 
