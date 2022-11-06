@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>       // fstat
-#include <unistd.h>         // write, getpagesize
+#include <unistd.h>         // write, sysconf
 #include <fcntl.h>          // open
 #include <errno.h>          // errno_t
 #include <limits.h>         // CHAR_BIT
@@ -339,11 +339,14 @@ accessorStatus accessorOpenReadingFile(accessor_t ** a, const char * basePath, c
     }
 
 #if ACCESSOR_USE_MMAP
-    if (windowSize && windowSize >= ACCESSOR_MMAP_MIN_FILESIZE)
+    long pageSize = -1;
+    if (pageSize == -1)
+        pageSize = sysconf(_SC_PAGESIZE);
+
+    if (windowSize && windowSize >= ACCESSOR_MMAP_MIN_FILESIZE && pageSize != -1)
     {
-        size_t pageSize = (size_t) getpagesize();
-        size_t fileMapOffset = windowOffset - (windowOffset % pageSize);
-        size_t fileMapSize = windowSize + (windowOffset % pageSize);
+        size_t fileMapOffset = windowOffset - (windowOffset % (size_t) pageSize);
+        size_t fileMapSize = windowSize + (windowOffset % (size_t) pageSize);
 
         (*a)->data = mmap(NULL, fileMapSize, PROT_READ, MAP_FILE | MAP_PRIVATE, file, (off_t) fileMapOffset);
         if ((*a)->data != MAP_FAILED)
@@ -351,7 +354,7 @@ accessorStatus accessorOpenReadingFile(accessor_t ** a, const char * basePath, c
             (*a)->isMapped = 1;
             (*a)->freeOnClose = 0;
             (*a)->dataFileOffset = fileMapOffset;
-            (*a)->windowOffset = windowOffset % pageSize;
+            (*a)->windowOffset = windowOffset % (size_t) pageSize;
             (*a)->baseAccessorWindowOffset = (*a)->windowOffset;
         }
         else
