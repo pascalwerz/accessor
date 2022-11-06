@@ -25,7 +25,7 @@
 
 
 // global variables
-static accessorEndianness endianness[ACCESSOR_ENDIANNESS_COUNT] = { accessorBig, accessorLittle, accessorNative, accessorReverse }; // used to loop over endianness
+static accessorEndianness endianness[ACCESSOR_ENDIANNESS_COUNT] = { accessorBig, accessorLittle, accessorNative, accessorReverse };     // used to loop over endianness
 
 // prototypes
 void debugBreakpoint(int line);
@@ -60,7 +60,8 @@ int main(int argc, char *argv[])
 
     printf("testing accessor build %ju\n", (uintmax_t) accessorBuildNumber());
 
-    srandom((unsigned int) time(NULL));
+    srandom((unsigned int) time(NULL));     // make random data really random
+
     testEndianness();
     for (uintmax_t i = 1; i <= ACCESSOR_TEST_ITERATIONS; i++)
     {
@@ -1651,6 +1652,11 @@ void testOpen(void)
 
 void testEndianness(void)
 {
+    accessorEndianness savedEndianness;
+
+
+    savedEndianness = accessorDefaultEndianness();
+
     switch(accessorGetNativeEndianness())
     {
     case accessorBig:
@@ -1661,12 +1667,15 @@ void testEndianness(void)
         break;
     case accessorNative:
         printf("** OUCH **: native endianness is: accessorNative, should be accessorBig or accessorLittle\n");
+        CHECK_EQ(0, 1);
         break;
     case accessorReverse:
         printf("** OUCH **: native endianness is: accessorReverse, should be accessorBig or accessorLittle\n");
+        CHECK_EQ(0, 1);
         break;
     default:
         printf("** OUCH **: native endianness is unknown\n");
+        CHECK_EQ(0, 1);
         break;
     }
 
@@ -1691,7 +1700,7 @@ void testEndianness(void)
     CHECK_EQ(accessorNativeOrReverseEndianness(accessorNative), accessorNative);
     CHECK_EQ(accessorNativeOrReverseEndianness(accessorReverse), accessorReverse);
 
-    CHECK_EQ(accessorSetDefaultEndianness(accessorNative), accessorOk);
+    CHECK_EQ(accessorSetDefaultEndianness(savedEndianness), accessorOk);
 }
 
 
