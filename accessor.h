@@ -40,10 +40,11 @@ extern "C" {
 
 
 
-#define ACCESSOR_BUILD_NUMBER   103
+#define ACCESSOR_BUILD_NUMBER   104
 // Version history:
 //
 //  Build   Date            Comment
+//  104     06-NOV-2022     corrected crash on munmap()
 //  103     05-NOV-2022     optimized accessorSwap[U]Int for common number width
 //  102     03-NOV-2022     stop using mktemp. when reading or mapping a file, only the window (possibly rounded to page boundary) is read or mapped
 //  101     14-OCT-2022     small files are always read in memory, not mapped
