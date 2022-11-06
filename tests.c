@@ -1497,6 +1497,28 @@ void testOpen(void)
     mkdtemp(subDirPath);
     CHECK_EQ(accessorBuildPath(&fullDirPath, dirPath, subDirPath, accessorPathOptionNone | accessorPathOptionConvertBackslash | accessorPathOptionCreatePath, 0), accessorOk);
 
+#if ACCESSOR_USE_MMAP
+    long pageSize = sysconf(_SC_PAGESIZE);
+    if (pageSize > 0)
+    {
+        size_t fileSize;
+
+
+        if (pageSize < ACCESSOR_MMAP_MIN_FILESIZE)
+            fileSize = ACCESSOR_MMAP_MIN_FILESIZE * 100;
+        else
+            fileSize = (size_t) pageSize * 100;
+
+        CHECK_EQ(accessorOpenWritingFile(&a, fullDirPath, filename, accessorPathOptionNone | accessorPathOptionCreatePath, 0666, 0, 0), accessorOk);
+        CHECK_EQ(accessorSize(a), 0);
+        CHECK_EQ(accessorWriteRepeatedByte(a, 0xaa, fileSize), accessorOk);
+        CHECK_EQ(accessorClose(&a), accessorOk);
+        CHECK_EQ(accessorOpenReadingFile(&a, fullDirPath, filename, accessorPathOptionNone, fileSize / 2 + 1, 1), accessorOk);
+        CHECK_EQ(accessorSize(a), 1);
+        CHECK_EQ(accessorClose(&a), accessorOk);
+    }
+#endif
+
     CHECK_EQ(accessorOpenWritingFile(&a, fullDirPath, filename, accessorPathOptionNone | accessorPathOptionCreatePath, 0666, 0, 0), accessorOk);
     CHECK_EQ(accessorClose(&a), accessorOk);
     CHECK_EQ(a, ACCESSOR_INIT);

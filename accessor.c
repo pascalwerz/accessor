@@ -365,6 +365,7 @@ accessorStatus accessorOpenReadingFile(accessor_t ** a, const char * basePath, c
             (*a)->freeOnClose = 0;
             (*a)->dataFileOffset = fileMapOffset;
             (*a)->windowOffset = windowOffset % (size_t) pageSize;
+            (*a)->dataMaxSize = fileMapSize;
             (*a)->baseAccessorWindowOffset = (*a)->windowOffset;
         }
         else
@@ -410,6 +411,7 @@ accessorStatus accessorOpenReadingFile(accessor_t ** a, const char * basePath, c
         }
         (*a)->dataFileOffset = windowOffset;
         (*a)->windowOffset = 0;
+        (*a)->dataMaxSize = windowSize;
         (*a)->baseAccessorWindowOffset = 0;
         (*a)->freeOnClose = 1;
     }
@@ -417,7 +419,6 @@ accessorStatus accessorOpenReadingFile(accessor_t ** a, const char * basePath, c
     (*a)->windowSize = windowSize;
     (*a)->cursor = 0;
     (*a)->availableBytes = windowSize;
-    (*a)->dataMaxSize = fileSize;
     (*a)->mayBeReallocated = 0;
     (*a)->inputFileDescriptor = file;
 
