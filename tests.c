@@ -1497,17 +1497,10 @@ void testOpen(void)
     mkdtemp(subDirPath);
     CHECK_EQ(accessorBuildPath(&fullDirPath, dirPath, subDirPath, accessorPathOptionNone | accessorPathOptionConvertBackslash | accessorPathOptionCreatePath, 0), accessorOk);
 
-#if ACCESSOR_USE_MMAP
     long pageSize = sysconf(_SC_PAGESIZE);
     if (pageSize > 0)
     {
-        size_t fileSize;
-
-
-        if (pageSize < ACCESSOR_MMAP_MIN_FILESIZE)
-            fileSize = ACCESSOR_MMAP_MIN_FILESIZE * 100;
-        else
-            fileSize = (size_t) pageSize * 100;
+        size_t fileSize = (size_t) pageSize * 100;
 
         CHECK_EQ(accessorOpenWritingFile(&a, fullDirPath, filename, accessorPathOptionNone | accessorPathOptionCreatePath, 0666, 0, 0), accessorOk);
         CHECK_EQ(accessorSize(a), 0);
@@ -1517,7 +1510,6 @@ void testOpen(void)
         CHECK_EQ(accessorSize(a), 1);
         CHECK_EQ(accessorClose(&a), accessorOk);
     }
-#endif
 
     CHECK_EQ(accessorOpenWritingFile(&a, fullDirPath, filename, accessorPathOptionNone | accessorPathOptionCreatePath, 0666, 0, 0), accessorOk);
     CHECK_EQ(accessorClose(&a), accessorOk);
@@ -1527,23 +1519,8 @@ void testOpen(void)
     CHECK_EQ(accessorClose(&a), accessorOk);
     CHECK_EQ(a, ACCESSOR_INIT);
 
-#if ACCESSOR_MMAP_MIN_FILESIZE > 100
     CHECK_EQ(accessorOpenWritingFile(&a, fullDirPath, filename, accessorPathOptionNone | accessorPathOptionCreatePath, 0666, 0, 0), accessorOk);
-    CHECK_EQ(accessorWriteRepeatedByte(a, 0xaa, (size_t) ACCESSOR_MMAP_MIN_FILESIZE - 100), accessorOk);
-    CHECK_EQ(accessorWriteUInt8(a, 0x55), accessorOk);
-    CHECK_EQ(accessorClose(&a), accessorOk);
-    CHECK_EQ(accessorOpenReadingFile(&a, fullDirPath, filename, accessorPathOptionNone, 0, ACCESSOR_UNTIL_END), accessorOk);
-    CHECK_EQ(accessorSeek(a, -2, SEEK_END), accessorOk);
-    CHECK_EQ(accessorReadUInt8(a, &u8), accessorOk);
-    CHECK_EQ(u8, 0xaa);
-    CHECK_EQ(accessorReadUInt8(a, &u8), accessorOk);
-    CHECK_EQ(u8, 0x55);
-    CHECK_EQ(accessorClose(&a), accessorOk);
-    CHECK_EQ(a, ACCESSOR_INIT);
-#endif
-
-    CHECK_EQ(accessorOpenWritingFile(&a, fullDirPath, filename, accessorPathOptionNone | accessorPathOptionCreatePath, 0666, 0, 0), accessorOk);
-    CHECK_EQ(accessorWriteRepeatedByte(a, 0xaa, ACCESSOR_MMAP_MIN_FILESIZE + 100), accessorOk);
+    CHECK_EQ(accessorWriteRepeatedByte(a, 0xaa, 16 * 1024 * 1024), accessorOk);
     CHECK_EQ(accessorWriteUInt8(a, 0x55), accessorOk);
     CHECK_EQ(accessorClose(&a), accessorOk);
     CHECK_EQ(accessorOpenReadingFile(&a, fullDirPath, filename, accessorPathOptionNone, 0, ACCESSOR_UNTIL_END), accessorOk);

@@ -7,6 +7,14 @@
 #include <fcntl.h>          // open
 #include <errno.h>          // errno_t
 #include <limits.h>         // CHAR_BIT
+
+// if ACCESSOR_USE_MMAP is true, accessor will try mapping data in memory instead of reading it.
+#if defined(TARGET_MSYS) && TARGET_MSYS
+#define ACCESSOR_USE_MMAP                   0
+#else
+#define ACCESSOR_USE_MMAP                   1
+#endif
+
 #if ACCESSOR_USE_MMAP
 #include <sys/mman.h>       // mmap, munmap
 #endif
@@ -18,16 +26,21 @@
 
 
 #define KB  1024
-#define MB  (1024*KB)
-#define GB  (1024*MB)
-#define TB  (1024*GB)
+#define MB  (1024 * KB)
+#define GB  (1024 * MB)
+#define TB  (1024 * GB)
 
 
 
 // maximum read() transfer size. 1 GB seems safe as 2 GB leads to EINVAL errors, Linux limit is just under 2 GB
-#define ACCESSOR_RW_COUNT_LIMIT             (1 * GB)
+#define ACCESSOR_FILE_READ_SIZE_LIMIT       (1 * GB)
 
-// helper to select a value according to 32/64 bit code
+// file read accessors with a window smaller than ACCESSOR_MMAP_MIN_FILESIZE will not be mapped but read in memory.
+#ifndef ACCESSOR_MMAP_MIN_FILESIZE
+#define ACCESSOR_MMAP_MIN_FILESIZE          (16 * 1024)
+#endif
+
+// helper to select a value in 32/64 bit code
 #define ACCESSOR_SELECT_32_64(X32, X64)     ((sizeof (void *) * CHAR_BIT < 64) ? (X32) : (X64))
 
 
@@ -395,8 +408,8 @@ accessorStatus accessorOpenReadingFile(accessor_t ** a, const char * basePath, c
 
 
             transferSize = windowSize - offset;
-            if (transferSize > ACCESSOR_RW_COUNT_LIMIT)
-                 transferSize = ACCESSOR_RW_COUNT_LIMIT;   // limit transfer size to a reasonable value
+            if (transferSize > ACCESSOR_FILE_READ_SIZE_LIMIT)
+                 transferSize = ACCESSOR_FILE_READ_SIZE_LIMIT;  // limit transfer size to a reasonable value
 
             bytesTransferred = read(file, (*a)->data + offset, transferSize);
             if (bytesTransferred == -1 || bytesTransferred == 0)
